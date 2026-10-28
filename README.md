@@ -141,7 +141,8 @@ cd ~/Documents/CodeYou_Projects/soc-assignment-10
 # 2. Activate virtual environment
 source venv/bin/activate
 
-# 3. Export Trello credentials (never hardcode these)
+# 3. Export credentials (never hardcode these)
+export IRONCLAD_API_KEY="your_api_key"
 export TRELLO_KEY="your_key"
 export TRELLO_TOKEN="your_token"
 export TRELLO_LIST_ID="6a3c5876ec6af73f6e367db0"
@@ -188,7 +189,7 @@ By Severity:
 
 ## Security Notes
 
-* **No secrets in code.** All Trello credentials are read from environment variables at runtime.
+* **No secrets in code.** The Mockaroo API key (`IRONCLAD_API_KEY`) and all Trello credentials are read from environment variables at runtime. The CLI exits with a clear error if `IRONCLAD_API_KEY` is unset.
 * **Rate limiting.** The `--limit` flag prevents accidental board flooding during testing.
 * **Stub inventory.** The `InventoryManager` uses a lightweight stub populated with hostnames that match the Mockaroo dataset, ensuring correlation works without importing complex Assignment 9 dependencies.
 
