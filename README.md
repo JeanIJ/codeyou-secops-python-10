@@ -1,32 +1,24 @@
 # Assignment 10: From Vulnerability to Ticket
 
-Code:You Assignment 10 — vulnerability correlation and Trello remediation ticketing CLI.
+Code:You Assignment 10. This extends the Ironclad Unified Inventory CLI. It downloads vulnerability findings, matches them to assets, and creates Trello cards for the findings that should be fixed.
 
 **Author:** Jean Irakiza  
 **Course:** Code:You  
-**Board:** [Trello Board](https://trello.com/b/HrXtpD15/s)
+**Board:** [Trello board](https://trello.com/b/HrXtpD15/s)
 
-## Description
+## What it does
 
-This project extends the Ironclad Unified Inventory CLI to operationalize vulnerability management. It bridges the gap between **visibility** (knowing what is vulnerable) and **action** (creating remediation tickets).
+1. Pulls findings from the Mockaroo API at `https://my.api.mockaroo.com/ironclad/vulns/findings.json`. That endpoint returns 250 findings.
+2. Matches each finding to an asset by hostname or IP.
+3. Labels severity from the CVSS score, using the CVSS v3.1 ranges.
+4. Picks which findings get a ticket from severity, exploit availability, and the asset environment.
+5. Creates a Trello card and sets a due date from the score.
 
-The system:
-
-1. Pulls 250 vulnerability findings from a Mockaroo REST API
-2. Correlates findings to known inventory assets by hostname and IP
-3. Derives severity from CVSS scores using standard v3.1 ranges
-4. Applies risk-based prioritization logic (severity + exploit availability + environment)
-5. Automatically creates Trello cards representing remediation tickets with SLA due dates
-
-## Tech
-
-- Python 3.10+
-- `requests` for the Mockaroo findings API and the Trello REST API
-- Standard library: `argparse` for the CLI and `datetime` for SLA due dates
+The `ticket` command does not call NetBox, Qualys, or CrowdStrike. `main.py` keeps a stub inventory of 9 assets whose hostnames and IPs show up in the Mockaroo data. `--source` is only printed (`Pulling from <source>... (stub)`). The same 9 assets are loaded every time.
 
 ## Setup
 
-From a checkout of this repository, using Python 3.10 or newer:
+Python 3.10 or newer. The only extra package is `requests`, used for Mockaroo and Trello. The CLI uses `argparse` and `datetime` from the standard library.
 
 ```bash
 python -m venv venv
@@ -34,29 +26,27 @@ source venv/bin/activate
 pip install requests
 ```
 
-Export credentials at runtime. They are not stored in the code:
+Export credentials in the shell before you run it. Use your own values. They are not stored in the code.
 
 ```bash
 export IRONCLAD_API_KEY="your_api_key"
 export TRELLO_KEY="your_key"
 export TRELLO_TOKEN="your_token"
-export TRELLO_LIST_ID="6a3c5876ec6af73f6e367db0"
+export TRELLO_LIST_ID="your_list_id"
 ```
 
-`TrelloClient` raises an error if `TRELLO_KEY`, `TRELLO_TOKEN`, or `TRELLO_LIST_ID` is missing. The ticket command raises an error if `IRONCLAD_API_KEY` is missing.
+`IRONCLAD_API_KEY` is sent as the `X-API-Key` header. The `ticket` command raises an error if it is missing. `TrelloClient` raises an error if `TRELLO_KEY`, `TRELLO_TOKEN`, or `TRELLO_LIST_ID` is missing.
 
 ## Usage
-
-Create remediation cards for prioritized findings:
 
 ```bash
 python main.py ticket --limit 5
 ```
 
-- `--limit` — maximum cards to create (default `20`)
-- `--source` — `netbox`, `qualys`, `crowdstrike`, or `all` (default `all`). Inventory loading in this assignment prints the selected source and uses a stub asset list.
+- `--limit` — maximum cards to create. Default is `20`.
+- `--source` — `netbox`, `qualys`, `crowdstrike`, or `all`. Default is `all`.
 
-**Output example:**
+Example:
 
 ```text
 ==================================================
@@ -88,48 +78,41 @@ By Severity:
   Low: 4
 ```
 
-## Architecture
+When `--limit` is hit, the command stops and prints that summary for the findings it has processed so far: tickets created, findings skipped, and a count by severity.
 
-```text
-┌─────────────────┐     ┌─────────────────────┐     ┌─────────────────┐
-│  Mockaroo API   │────▶│  Python CLI Engine  │────▶│  Trello Board   │
-│  (250 vulns)    │     │  - correlate        │     │  (Tickets)      │
-└─────────────────┘     │  - prioritize       │     └─────────────────┘
-                        │  - ticket           │
-                        └─────────────────────┘
-```
+## Files
 
-| File | Responsibility |
-| :-- | :-- |
-| `vulnerability.py` | Data model: parses raw API records into structured `Vulnerability` objects |
-| `vulnerability_source.py` | HTTP client: fetches and validates JSON from the Mockaroo endpoint |
-| `vulnerability_attach.py` | Correlation engine: indexes vulns by hostname/IP and attaches them to assets |
-| `prioritization.py` | Decision engine: determines which findings deserve tickets based on risk context |
-| `trello_client.py` | Integration layer: authenticates and POSTs cards to the Trello REST API |
-| `ticket_builder.py` | Formatter: generates markdown descriptions and SLA due dates |
-| `main.py` | Orchestrator: CLI entry point, metrics dashboard, duplicate prevention |
+- `main.py` — CLI entry point. Loads the stub inventory, fetches findings, creates cards, skips a hostname and CVE already seen in that run, and prints the summary.
+- `vulnerability.py` — turns one API record into a `Vulnerability`. `severity` is a property computed from `cvss_score`. `key()` is `asset_hostname|cve_id`.
+- `vulnerability_source.py` — GETs the Mockaroo JSON and builds `Vulnerability` objects. It expects a list.
+- `vulnerability_attach.py` — indexes findings by hostname and IP, then attaches them to assets. A finding already attached by hostname is not added again on an IP match.
+- `prioritization.py` — `should_ticket(asset, vuln)` decides if a finding gets a card.
+- `ticket_builder.py` — card title, markdown description, and ISO 8601 due date.
+- `trello_client.py` — reads the Trello env vars and POSTs the card to `https://api.trello.com/1/cards`.
 
-## Prioritization Logic
+`asset.py`, `inventory_manager.py`, and `inventory_source.py` are the inventory classes for NetBox, Qualys, and CrowdStrike. The `ticket` command does not import them. It uses the stub `Asset` and `InventoryManager` in `main.py`.
 
-> **Core principle: Severity ≠ Risk**
+## Which findings get a ticket
 
-A vulnerability's CVSS score is only the starting point. Real security teams do not fix everything — they fix what matters in context.
+`should_ticket` in `prioritization.py`:
 
-| Severity | CVSS Range | Auto-Ticket? | Exception / Escalation |
-| :-- | :-- | :-- | :-- |
-| **Critical** | 9.0 – 10.0 | Yes | Immediate remediation required |
-| **High** | 7.0 – 8.9 | Yes | Patch within 14 days |
-| **Medium** | 4.0 – 6.9 | Conditional | Only if `exploit_available=True` and asset `environment=prod` |
-| **Low** | 0.0 – 3.9 | No | Too noisy; tracked but not ticketed |
-| **False positive / closed / mitigated** | Any | No | Excluded to reduce alert fatigue |
+| Severity | CVSS | Ticket? |
+| --- | --- | --- |
+| Critical | 9.0 – 10.0 | Yes |
+| High | 7.0 – 8.9 | Yes |
+| Medium | 4.0 – 6.9 | Only if `exploit_available` is true and the asset `environment` is `prod` |
+| Low | 0.0 – 3.9 | No |
+| Unknown | score missing or not a number | No |
+| `false_positive`, `closed`, or `mitigated` | any | No |
 
-**Why this matters:** A Medium vulnerability with public exploit code on a production web server is more dangerous than a High vulnerability on an isolated development laptop. This logic simulates how enterprise vulnerability management programs (VMM) operate.
+Status and environment are compared in lowercase. A critical finding still gets no ticket if its status is one of those three.
 
-## Severity Derivation
-
-CVSS scores are translated into human-readable severity labels using the industry-standard NIST v3.1 mapping:
+`Vulnerability.severity` uses the same CVSS cutoffs:
 
 ```python
+if self.cvss_score is None:
+    return "unknown"
+score = float(self.cvss_score)
 if score >= 9.0:
     return "critical"
 elif score >= 7.0:
@@ -140,51 +123,28 @@ else:
     return "low"
 ```
 
-This is implemented as a `@property` on the `Vulnerability` class so severity is always current and derived dynamically from the raw score. A missing CVSS score stays `unknown` and is not ticketed.
+A missing CVSS score stays `unknown` and is not ticketed.
 
-## Challenges Implemented
+## Due dates
 
-### 1. Duplicate Prevention
+`ticket_builder.py` sets Trello's `due` field from the CVSS score:
 
-A `seen_keys` set tracks `(hostname|cve_id)` pairs during each run. If the same vulnerability appears on the same host twice, only one ticket is created. This prevents ticket spam and mimics deduplication logic in enterprise SOAR platforms.
+- Critical (9.0 and up): 7 days from now
+- High (7.0 – 8.9): 14 days from now
+- Medium (4.0 – 6.9): 30 days from now
 
-### 2. SLA Enforcement
+The value is `datetime.now()` plus that many days, formatted as ISO 8601. Low findings are not ticketed, so they do not get a due date.
 
-Due dates are automatically assigned based on severity:
+## Duplicates
 
-- **Critical:** 7 days
-- **High:** 14 days
-- **Medium:** 30 days
+Each run keeps a `seen_keys` set of `Vulnerability.key()` values (`asset_hostname|cve_id`). If that pair shows up again, the CLI does not create another card.
 
-These are passed to Trello's `due` parameter as ISO 8601 timestamps, creating accountability and measurable remediation timelines.
+## Card text
 
-### 3. Metrics Dashboard
+The title looks like `[HIGH] CVE-2021-15740 on npr.org`. The description lists hostname, IP, OS, environment, owner, source, CVE, title, severity, CVSS, whether an exploit is available, status, and the recommended fix.
 
-After every run, the CLI prints a summary:
+## Notes
 
-```text
-Tickets created: 5
-Findings skipped: 6
-By Severity:
-  High: 2
-  Medium: 5
-  Low: 4
-```
-
-This gives leadership a snapshot of risk exposure and team workload without opening the Trello board.
-
-## Security Notes
-
-- **No secrets in code.** The Mockaroo API key (`IRONCLAD_API_KEY`) and the Trello credentials (`TRELLO_KEY`, `TRELLO_TOKEN`, and `TRELLO_LIST_ID`) are read from environment variables at runtime. The CLI exits with a clear error if `IRONCLAD_API_KEY` is unset.
-- **Rate limiting.** The `--limit` flag prevents accidental board flooding during testing.
-- **Stub inventory.** The `InventoryManager` used by the CLI is a lightweight stub populated with hostnames that match the Mockaroo dataset, so correlation works without importing complex Assignment 9 dependencies.
-
-## Status
-
-| Requirement | Status |
-| :-- | :-- |
-| Updated CLI code | Done — 7 Python modules for correlation, prioritization, and ticketing |
-| Trello board screenshot | Done — see board `HrXtpD15` |
-| Terminal output (vuln count + ticket count) | Done — included above |
-| README explaining prioritization logic | Done — this document |
-| README explaining severity derivation | Done — this document |
+- The Mockaroo key and the Trello key, token, and list id are read from the environment. They are not hardcoded.
+- `--limit` caps how many cards one run creates.
+- The stub asset list is in `main.py`, so matching works without the Assignment 9 inventory sources.
