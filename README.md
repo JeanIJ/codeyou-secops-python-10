@@ -34,15 +34,16 @@ source venv/bin/activate
 pip install requests
 ```
 
-Export Trello credentials at runtime. They are not stored in the code:
+Export credentials at runtime. They are not stored in the code:
 
 ```bash
+export IRONCLAD_API_KEY="your_api_key"
 export TRELLO_KEY="your_key"
 export TRELLO_TOKEN="your_token"
 export TRELLO_LIST_ID="6a3c5876ec6af73f6e367db0"
 ```
 
-`TrelloClient` raises an error if `TRELLO_KEY`, `TRELLO_TOKEN`, or `TRELLO_LIST_ID` is missing.
+`TrelloClient` raises an error if `TRELLO_KEY`, `TRELLO_TOKEN`, or `TRELLO_LIST_ID` is missing. The ticket command raises an error if `IRONCLAD_API_KEY` is missing.
 
 ## Usage
 
@@ -174,7 +175,7 @@ This gives leadership a snapshot of risk exposure and team workload without open
 
 ## Security Notes
 
-- **No Trello secrets in code.** `TRELLO_KEY`, `TRELLO_TOKEN`, and `TRELLO_LIST_ID` are read from environment variables at runtime.
+- **No secrets in code.** The Mockaroo API key (`IRONCLAD_API_KEY`) and the Trello credentials (`TRELLO_KEY`, `TRELLO_TOKEN`, and `TRELLO_LIST_ID`) are read from environment variables at runtime. The CLI exits with a clear error if `IRONCLAD_API_KEY` is unset.
 - **Rate limiting.** The `--limit` flag prevents accidental board flooding during testing.
 - **Stub inventory.** The `InventoryManager` used by the CLI is a lightweight stub populated with hostnames that match the Mockaroo dataset, so correlation works without importing complex Assignment 9 dependencies.
 

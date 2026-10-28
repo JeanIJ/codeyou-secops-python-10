@@ -43,7 +43,14 @@ from prioritization import should_ticket
 from trello_client import TrelloClient
 from ticket_builder import build_ticket
 
-HEADERS = {"X-API-Key": "cf7bbbd0"}
+def vuln_api_headers() -> dict[str, str]:
+    api_key = os.environ.get("IRONCLAD_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "Missing IRONCLAD_API_KEY. Run:\n"
+            "  export IRONCLAD_API_KEY='...'"
+        )
+    return {"X-API-Key": api_key}
 
 
 def build_manager():
@@ -64,6 +71,8 @@ def print_summary(created: int, skipped: int, stats: dict) -> None:
 
 
 def cmd_ticket(args) -> None:
+    headers = vuln_api_headers()
+
     print("=" * 50)
     print("IRONCLAD VULNERABILITY TICKETING")
     print("=" * 50)
@@ -73,7 +82,7 @@ def cmd_ticket(args) -> None:
     
     print(f"\nLoaded {len(mgr.assets)} assets.")
     
-    vuln_src = VulnerabilitySource(VULN_API_URL, headers=HEADERS)
+    vuln_src = VulnerabilitySource(VULN_API_URL, headers=headers)
     vulns = vuln_src.fetch_vulns()
     print(f"Fetched {len(vulns)} vulnerabilities.")
     
